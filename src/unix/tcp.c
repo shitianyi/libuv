@@ -82,7 +82,7 @@ static int maybe_new_socket(uv_tcp_t* handle, int domain, unsigned long flags) {
         handle->flags |= flags;
         return 0;
       }
-      
+
       /* Query to see if tcp socket is bound. */
       slen = sizeof(saddr);
       memset(&saddr, 0, sizeof(saddr));
@@ -283,43 +283,44 @@ int uv_tcp_open(uv_tcp_t* handle, uv_os_sock_t sock) {
 int uv_tcp_getsockname(const uv_tcp_t* handle,
                        struct sockaddr* name,
                        int* namelen) {
-  socklen_t socklen;
 
   if (handle->delayed_error)
     return handle->delayed_error;
 
-  if (uv__stream_fd(handle) < 0)
-    return UV_EINVAL;  /* FIXME(bnoordhuis) UV_EBADF */
-
-  /* sizeof(socklen_t) != sizeof(int) on some systems. */
-  socklen = (socklen_t) *namelen;
-
-  if (getsockname(uv__stream_fd(handle), name, &socklen))
-    return UV__ERR(errno);
-
-  *namelen = (int) socklen;
-  return 0;
+  return uv__getsockpeername((const uv_handle_t*) handle,
+                             getsockname,
+                             name,
+                             namelen);
 }
 
 
 int uv_tcp_getpeername(const uv_tcp_t* handle,
                        struct sockaddr* name,
                        int* namelen) {
-  socklen_t socklen;
 
   if (handle->delayed_error)
     return handle->delayed_error;
 
-  if (uv__stream_fd(handle) < 0)
-    return UV_EINVAL;  /* FIXME(bnoordhuis) UV_EBADF */
+  return uv__getsockpeername((const uv_handle_t*) handle,
+                             getpeername,
+                             name,
+                             namelen);
+}
 
-  /* sizeof(socklen_t) != sizeof(int) on some systems. */
-  socklen = (socklen_t) *namelen;
 
-  if (getpeername(uv__stream_fd(handle), name, &socklen))
+int uv_tcp_close_reset(uv_tcp_t* handle, uv_close_cb close_cb) {
+  int fd;
+  struct linger l = { 1, 0 };
+
+  /* Disallow setting SO_LINGER to zero due to some platform inconsistencies */
+  if (handle->flags & UV_HANDLE_SHUTTING)
+    return UV_EINVAL;
+
+  fd = uv__stream_fd(handle);
+  if (0 != setsockopt(fd, SOL_SOCKET, SO_LINGER, &l, sizeof(l)))
     return UV__ERR(errno);
 
-  *namelen = (int) socklen;
+  uv_close((uv_handle_t*) handle, close_cb);
   return 0;
 }
 

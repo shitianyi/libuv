@@ -32,8 +32,10 @@ libuv_la_LDFLAGS = -no-undefined -version-info 1:0:0
 libuv_la_SOURCES = src/fs-poll.c \
                    src/heap-inl.h \
                    src/idna.c \
+                   src/idna.h \
                    src/inet.c \
                    src/queue.h \
+                   src/random.c \
                    src/strscpy.c \
                    src/strscpy.h \
                    src/threadpool.c \
@@ -104,6 +106,7 @@ libuv_la_SOURCES += src/unix/async.c \
                    src/unix/pipe.c \
                    src/unix/poll.c \
                    src/unix/process.c \
+                   src/unix/random-devurandom.c \
                    src/unix/signal.c \
                    src/unix/spinlock.h \
                    src/unix/stream.c \
@@ -116,16 +119,18 @@ endif  # WINNT
 
 EXTRA_DIST = test/fixtures/empty_file \
              test/fixtures/load_error.node \
+             test/fixtures/lorem_ipsum.txt \
              include \
-             test \
              docs \
              img \
              samples \
-             android-configure \
+             android-configure-arm \
+             android-configure-arm64 \
+             android-configure-x86 \
+             android-configure-x86_64 \
              CONTRIBUTING.md \
              LICENSE \
              README.md \
-             checksparse.sh \
              vcbuild.bat \
              common.gypi \
              gyp_uv.py \
@@ -135,11 +140,7 @@ EXTRA_DIST = test/fixtures/empty_file \
 
 TESTS = test/run-tests
 check_PROGRAMS = test/run-tests
-if OS390
 test_run_tests_CFLAGS =
-else
-test_run_tests_CFLAGS = -Wno-long-long
-endif
 
 if SUNOS
 # Can't be turned into a CC_CHECK_CFLAGS in configure.ac, it makes compilers
@@ -180,6 +181,9 @@ test_run_tests_SOURCES = test/blackhole-server.c \
                          test/test-fs-event.c \
                          test/test-fs-poll.c \
                          test/test-fs.c \
+                         test/test-fs-readdir.c \
+                         test/test-fs-fd-hash.c \
+                         test/test-fs-open-flags.c \
                          test/test-fork.c \
                          test/test-getters-setters.c \
                          test/test-get-currentexe.c \
@@ -190,6 +194,7 @@ test_run_tests_SOURCES = test/blackhole-server.c \
                          test/test-gethostname.c \
                          test/test-getnameinfo.c \
                          test/test-getsockname.c \
+                         test/test-gettimeofday.c \
                          test/test-handle-fileno.c \
                          test/test-homedir.c \
                          test/test-hrtime.c \
@@ -233,6 +238,7 @@ test_run_tests_SOURCES = test/blackhole-server.c \
                          test/test-process-title.c \
                          test/test-process-title-threadsafe.c \
                          test/test-queue-foreach-delete.c \
+                         test/test-random.c \
                          test/test-ref.c \
                          test/test-run-nowait.c \
                          test/test-run-once.c \
@@ -241,6 +247,7 @@ test_run_tests_SOURCES = test/blackhole-server.c \
                          test/test-shutdown-eof.c \
                          test/test-shutdown-twice.c \
                          test/test-signal-multiple-loops.c \
+                         test/test-signal-pending-on-close.c \
                          test/test-signal.c \
                          test/test-socket-buffer-size.c \
                          test/test-spawn.c \
@@ -252,6 +259,7 @@ test_run_tests_SOURCES = test/blackhole-server.c \
                          test/test-tcp-close-accept.c \
                          test/test-tcp-close-while-connecting.c \
                          test/test-tcp-close.c \
+                         test/test-tcp-close-reset.c \
                          test/test-tcp-create-socket-early.c \
                          test/test-tcp-connect-error-after-write.c \
                          test/test-tcp-connect-error.c \
@@ -268,6 +276,7 @@ test_run_tests_SOURCES = test/blackhole-server.c \
                          test/test-tcp-writealot.c \
                          test/test-tcp-write-fail.c \
                          test/test-tcp-try-write.c \
+                         test/test-tcp-try-write-error.c \
                          test/test-tcp-write-queue-order.c \
                          test/test-thread-equal.c \
                          test/test-thread.c \
@@ -281,6 +290,7 @@ test_run_tests_SOURCES = test/blackhole-server.c \
                          test/test-tty.c \
                          test/test-udp-alloc-cb-fail.c \
                          test/test-udp-bind.c \
+                         test/test-udp-connect.c \
                          test/test-udp-create-socket-early.c \
                          test/test-udp-dgram-too-big.c \
                          test/test-udp-ipv6.c \
@@ -315,12 +325,24 @@ test_run_tests_CFLAGS += -D_ALL_SOURCE \
                          -D_LINUX_SOURCE_COMPAT
 endif
 
+if OS400
+test_run_tests_CFLAGS += -D_ALL_SOURCE \
+                         -D_XOPEN_SOURCE=500 \
+                         -D_LINUX_SOURCE_COMPAT
+endif
+
+if HAIKU
+test_run_tests_CFLAGS += -D_BSD_SOURCE
+endif
+
 if LINUX
 test_run_tests_CFLAGS += -D_GNU_SOURCE
 endif
 
 if SUNOS
-test_run_tests_CFLAGS += -D__EXTENSIONS__ -D_XOPEN_SOURCE=500
+test_run_tests_CFLAGS += -D__EXTENSIONS__ \
+                         -D_XOPEN_SOURCE=500 \
+                         -D_REENTRANT
 endif
 
 if OS390
@@ -347,6 +369,19 @@ libuv_la_CFLAGS += -D_ALL_SOURCE \
                    -DHAVE_SYS_AHAFS_EVPRODS_H
 uvinclude_HEADERS += include/uv/aix.h
 libuv_la_SOURCES += src/unix/aix.c src/unix/aix-common.c
+endif
+
+if OS400
+libuv_la_CFLAGS += -D_ALL_SOURCE \
+                   -D_XOPEN_SOURCE=500 \
+                   -D_LINUX_SOURCE_COMPAT \
+                   -D_THREAD_SAFE
+uvinclude_HEADERS += include/uv/posix.h
+libuv_la_SOURCES += src/unix/aix-common.c \
+                    src/unix/ibmi.c \
+                    src/unix/posix-poll.c \
+                    src/unix/no-fsevents.c \
+                    src/unix/no-proctitle.c
 endif
 
 if ANDROID
@@ -378,7 +413,8 @@ libuv_la_SOURCES += src/unix/bsd-ifaddrs.c \
                     src/unix/darwin-proctitle.c \
                     src/unix/fsevents.c \
                     src/unix/kqueue.c \
-                    src/unix/proctitle.c
+                    src/unix/proctitle.c \
+                    src/unix/random-getentropy.c
 test_run_tests_LDFLAGS += -lutil
 endif
 
@@ -398,8 +434,20 @@ libuv_la_SOURCES += src/unix/bsd-ifaddrs.c \
                     src/unix/bsd-proctitle.c \
                     src/unix/freebsd.c \
                     src/unix/kqueue.c \
-                    src/unix/posix-hrtime.c
+                    src/unix/posix-hrtime.c \
+                    src/unix/random-getrandom.c
 test_run_tests_LDFLAGS += -lutil
+endif
+
+if HAIKU
+uvinclude_HEADERS += include/uv/posix.h
+libuv_la_CFLAGS += -D_BSD_SOURCE
+libuv_la_SOURCES += src/unix/bsd-ifaddrs.c \
+                    src/unix/haiku.c \
+                    src/unix/no-fsevents.c \
+                    src/unix/no-proctitle.c \
+                    src/unix/posix-hrtime.c \
+                    src/unix/posix-poll.c
 endif
 
 if HURD
@@ -418,8 +466,9 @@ libuv_la_SOURCES += src/unix/linux-core.c \
                     src/unix/linux-syscalls.h \
                     src/unix/procfs-exepath.c \
                     src/unix/proctitle.c \
-                    src/unix/sysinfo-loadavg.c \
-                    src/unix/sysinfo-memory.c
+                    src/unix/random-getrandom.c \
+                    src/unix/random-sysctl-linux.c \
+                    src/unix/sysinfo-loadavg.c
 test_run_tests_LDFLAGS += -lutil
 endif
 
@@ -452,13 +501,16 @@ libuv_la_SOURCES += src/unix/bsd-ifaddrs.c \
                     src/unix/bsd-proctitle.c \
                     src/unix/kqueue.c \
                     src/unix/openbsd.c \
-                    src/unix/posix-hrtime.c
+                    src/unix/posix-hrtime.c \
+                    src/unix/random-getentropy.c
 test_run_tests_LDFLAGS += -lutil
 endif
 
 if SUNOS
 uvinclude_HEADERS += include/uv/sunos.h
-libuv_la_CFLAGS += -D__EXTENSIONS__ -D_XOPEN_SOURCE=500
+libuv_la_CFLAGS += -D__EXTENSIONS__ \
+                   -D_XOPEN_SOURCE=500 \
+                   -D_REENTRANT
 libuv_la_SOURCES += src/unix/no-proctitle.c \
                     src/unix/sunos.c
 endif
@@ -471,6 +523,7 @@ libuv_la_CFLAGS += -D_UNIX03_THREADS \
                    -D_XOPEN_SOURCE_EXTENDED \
                    -D_ALL_SOURCE \
                    -D_LARGE_TIME_API \
+                   -D_OPEN_SYS_SOCK_EXT3 \
                    -D_OPEN_SYS_SOCK_IPV6 \
                    -D_OPEN_SYS_FILE_EXT \
                    -DUV_PLATFORM_SEM_T=int \

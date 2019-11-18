@@ -549,6 +549,21 @@ static void uv_tcp_queue_read(uv_loop_t* loop, uv_tcp_t* handle) {
 }
 
 
+int uv_tcp_close_reset(uv_tcp_t* handle, uv_close_cb close_cb) {
+  struct linger l = { 1, 0 };
+
+  /* Disallow setting SO_LINGER to zero due to some platform inconsistencies */
+  if (handle->flags & UV_HANDLE_SHUTTING)
+    return UV_EINVAL;
+
+  if (0 != setsockopt(handle->socket, SOL_SOCKET, SO_LINGER, (const char*)&l, sizeof(l)))
+    return uv_translate_sys_error(WSAGetLastError());
+
+  uv_close((uv_handle_t*) handle, close_cb);
+  return 0;
+}
+
+
 int uv_tcp_listen(uv_tcp_t* handle, int backlog, uv_connection_cb cb) {
   unsigned int i, simultaneous_accepts;
   uv_tcp_accept_t* req;
@@ -809,44 +824,24 @@ static int uv_tcp_try_connect(uv_connect_t* req,
 int uv_tcp_getsockname(const uv_tcp_t* handle,
                        struct sockaddr* name,
                        int* namelen) {
-  int result;
 
-  if (handle->socket == INVALID_SOCKET) {
-    return UV_EINVAL;
-  }
-
-  if (handle->delayed_error) {
-    return uv_translate_sys_error(handle->delayed_error);
-  }
-
-  result = getsockname(handle->socket, name, namelen);
-  if (result != 0) {
-    return uv_translate_sys_error(WSAGetLastError());
-  }
-
-  return 0;
+  return uv__getsockpeername((const uv_handle_t*) handle,
+                             getsockname,
+                             name,
+                             namelen,
+                             handle->delayed_error);
 }
 
 
 int uv_tcp_getpeername(const uv_tcp_t* handle,
                        struct sockaddr* name,
                        int* namelen) {
-  int result;
 
-  if (handle->socket == INVALID_SOCKET) {
-    return UV_EINVAL;
-  }
-
-  if (handle->delayed_error) {
-    return uv_translate_sys_error(handle->delayed_error);
-  }
-
-  result = getpeername(handle->socket, name, namelen);
-  if (result != 0) {
-    return uv_translate_sys_error(WSAGetLastError());
-  }
-
-  return 0;
+  return uv__getsockpeername((const uv_handle_t*) handle,
+                             getpeername,
+                             name,
+                             namelen,
+                             handle->delayed_error);
 }
 
 

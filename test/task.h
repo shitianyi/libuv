@@ -44,6 +44,10 @@
 # pragma clang diagnostic ignored "-Wc99-extensions"
 #endif
 
+#ifdef __GNUC__
+# pragma GCC diagnostic ignored "-Wvariadic-macros"
+#endif
+
 #define TEST_PORT 9123
 #define TEST_PORT_2 9124
 
@@ -174,8 +178,7 @@ extern int snprintf(char*, size_t, const char*, ...);
 
 #if defined(__clang__) ||                                \
     defined(__GNUC__) ||                                 \
-    defined(__INTEL_COMPILER) ||                         \
-    defined(__SUNPRO_C)
+    defined(__INTEL_COMPILER)
 # define UNUSED __attribute__((unused))
 #else
 # define UNUSED
